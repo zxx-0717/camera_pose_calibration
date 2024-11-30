@@ -42,19 +42,19 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
         this->width = msg->width;
         this->height = msg->height;
 
-        std::vector<Point3D>().swap(this->points);
-
         Point3D point;
         int index = 0;
         float x, y, z;
         uint8_t uc_x[4], uc_y[4], uc_z[4];
 
         float z_min = 10.0;
+        std::vector<std::vector<Point3D>>().swap(this->points_all_lines);
 
         for (int row = 0; row < height; row++)
         {
                 for (int col = 0; col < width; col++)
                 {
+                        std::vector<Point3D>().swap(this->points_one_line);
                         index = (row * width + height) * 16; // msg->point_step = 16;
                         uc_z[0] = msg->data[index + 8];
                         uc_z[1] = msg->data[index + 9];
@@ -79,12 +79,12 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
                                 point.x = x;
                                 point.y = y;
                                 point.z = z;
-                                this->points.push_back(point);
+                                this->points_one_line.push_back(point);
                                 RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000,"row: %d, col: %d => x: %f, y: %f, z: %f",row, col, x, y, z);
                                 if (z_min > z)
                                 {
                                         z_min = z;
-                                        RCLCPP_INFO(get_logger(), "updata z_min: %f", z_min);
+                                        RCLCPP_DEBUG(get_logger(), "updata z_min: %f", z_min);
                                 }
                         }
                         else
@@ -92,8 +92,84 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
                                 continue;
                         }
                 }
+                this->points_all_lines.push_back(this->points_one_line);
         }
-        RCLCPP_INFO(get_logger(), "size: %zd", this->points.size());
+
+        size_t lines = this->points_all_lines.size();
+
+        float y_min = 0.5;
+        float y_max = -0.5;
+
+        float z_mean_min = 5.0;
+        float z_mean_max = 0.0;
+
+        float y_mean_min = 5.0;
+        float y_mean_max = -5.0;
+
+        for (size_t line = 0; line < lines; line++)
+        {
+                auto points_line = this->points_all_lines[line];
+                float z_sum = 0.0;
+                float y_sum = 0.0;
+                for (size_t point_index = 0; point_index < points_line.size(); point_index++)
+                {
+                        auto point = points_line[point_index];
+
+                        z_sum += point.z;
+                        y_sum += point.y;
+                        if (point_index == points_line.size() - 1)
+                        {
+                                float z_mean = z_sum / (float)points_line.size();
+                                if (z_mean_max < z_mean)
+                                {
+                                        z_mean_max = z_mean;
+                                }
+                                if (z_mean_min > z_mean)
+                                {
+                                        z_mean_min = z_mean;
+                                }
+
+                                float y_mean = y_sum / (float)points_line.size();
+                                if (y_mean_max < y_mean)
+                                {
+                                        y_mean_max = y_mean;
+                                }
+                                if (y_mean_min > y_mean)
+                                {
+                                        y_mean_min = y_mean;
+                                }
+                        }
+
+                        float x_min = 0.2;
+                        float x_max = -0.2;
+                        float y_min = 2.0;
+                        float y_max = -2.0;
+                        if (x_min > point.x)
+                        {
+                                x_min = point.x;
+                        }
+                        if (x_max < point.x)
+                        {
+                                x_max = point.x;
+                        }
+                        if (y_min > point.y)
+                        {
+                                y_min = point.y;
+                        }
+                        if (y_max < point.y)
+                        {
+                                y_max = point.y;
+                        }
+                        RCLCPP_INFO(get_logger(), "y_max: %f, y_min: %f, x_max: %f, x_min: %f", y_max, y_min, x_max, x_min);
+                        RCLCPP_INFO(get_logger(), "line %zd roll: %f", line, std::acos((y_max - y_min)/(x_max - x_min)));
+                }
+                if (line == this->points_all_lines.size() - 1)
+                {
+                        RCLCPP_INFO(get_logger(), "y_mean_max: %f, y_mean_min: %f, z_mean_max: %f, z_min_min: %f",
+                                 y_mean_max, y_mean_min, z_mean_max, z_mean_min);
+                        RCLCPP_INFO(get_logger(), "pitch: %f", std::acos( (y_mean_max - y_mean_min) / (z_mean_max - z_mean_min) ));
+                }
+        }
 }
 
 } // end of namespace

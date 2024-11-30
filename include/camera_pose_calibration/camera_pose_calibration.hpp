@@ -38,7 +38,8 @@ public:
         std::string topic_name;
         float z_max;
 
-        std::vector<Point3D> points;
+        std::vector<Point3D> points_one_line;
+        std::vector<std::vector<Point3D>> points_all_lines;
         int width, height;
 };
 
