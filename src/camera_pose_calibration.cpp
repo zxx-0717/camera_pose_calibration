@@ -97,9 +97,6 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
 
         size_t lines = this->points_all_lines.size();
 
-        float y_min = 0.5;
-        float y_max = -0.5;
-
         float z_mean_min = 5.0;
         float z_mean_max = 0.0;
 
@@ -111,6 +108,13 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
                 auto points_line = this->points_all_lines[line];
                 float z_sum = 0.0;
                 float y_sum = 0.0;
+
+                float x_min = 0.2;
+                float x_max = -0.2;
+                float y_min = 2.0;
+                float y_max = -2.0;
+
+                RCLCPP_INFO(get_logger(), "line.points.size: %zd", points_line.size());
                 for (size_t point_index = 0; point_index < points_line.size(); point_index++)
                 {
                         auto point = points_line[point_index];
@@ -140,10 +144,6 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
                                 }
                         }
 
-                        float x_min = 0.2;
-                        float x_max = -0.2;
-                        float y_min = 2.0;
-                        float y_max = -2.0;
                         if (x_min > point.x)
                         {
                                 x_min = point.x;
