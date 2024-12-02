@@ -52,30 +52,31 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
 
         for (int row = 0; row < height; row++)
         {
+                std::vector<Point3D>().swap(this->points_one_line);
                 for (int col = 0; col < width; col++)
                 {
-                        std::vector<Point3D>().swap(this->points_one_line);
                         index = (row * width + height) * 16; // msg->point_step = 16;
+                        
+                        uc_x[0] = msg->data[index + 0];
+                        uc_x[1] = msg->data[index + 1];
+                        uc_x[2] = msg->data[index + 2];
+                        uc_x[3] = msg->data[index + 3];
+                        memcpy(&x, uc_x, 4);
+
+                        uc_y[0] = msg->data[index + 4];
+                        uc_y[1] = msg->data[index + 5];
+                        uc_y[2] = msg->data[index + 6];
+                        uc_y[3] = msg->data[index + 7];
+                        memcpy(&y, uc_y, 4);
+
                         uc_z[0] = msg->data[index + 8];
                         uc_z[1] = msg->data[index + 9];
                         uc_z[2] = msg->data[index + 10];
                         uc_z[3] = msg->data[index + 11];
                         memcpy(&z, uc_z, 4);
 
-                        if (!std::isnan(z) && (z < this->z_max))
+                        if (!std::isnan(x) && !std::isnan(y) && !std::isnan(z) && (z < this->z_max))
                         {
-                                uc_x[0] = msg->data[index + 0];
-                                uc_x[1] = msg->data[index + 1];
-                                uc_x[2] = msg->data[index + 2];
-                                uc_x[3] = msg->data[index + 3];
-                                memcpy(&x, uc_x, 4);
-
-                                uc_y[0] = msg->data[index + 4];
-                                uc_y[1] = msg->data[index + 5];
-                                uc_y[2] = msg->data[index + 6];
-                                uc_y[3] = msg->data[index + 7];
-                                memcpy(&y, uc_y, 4);
-
                                 point.x = x;
                                 point.y = y;
                                 point.z = z;
@@ -92,7 +93,10 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
                                 continue;
                         }
                 }
-                this->points_all_lines.push_back(this->points_one_line);
+                if (this->points_one_line.size() > 0)
+                {
+                        this->points_all_lines.push_back(this->points_one_line);
+                }
         }
 
         size_t lines = this->points_all_lines.size();
@@ -103,6 +107,7 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
         float y_mean_min = 5.0;
         float y_mean_max = -5.0;
 
+        RCLCPP_INFO(get_logger(), "lines.size: %zd", lines);
         for (size_t line = 0; line < lines; line++)
         {
                 auto points_line = this->points_all_lines[line];
@@ -114,7 +119,7 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
                 float y_min = 2.0;
                 float y_max = -2.0;
 
-                RCLCPP_INFO(get_logger(), "line.points.size: %zd", points_line.size());
+                RCLCPP_INFO(get_logger(), "line %zd points.size: %zd", line, points_line.size());
                 for (size_t point_index = 0; point_index < points_line.size(); point_index++)
                 {
                         auto point = points_line[point_index];
@@ -144,6 +149,7 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
                                 }
                         }
 
+                        RCLCPP_INFO(get_logger(), "x: %f", point.x);
                         if (x_min > point.x)
                         {
                                 x_min = point.x;
@@ -160,15 +166,17 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
                         {
                                 y_max = point.y;
                         }
-                        RCLCPP_INFO(get_logger(), "y_max: %f, y_min: %f, x_max: %f, x_min: %f", y_max, y_min, x_max, x_min);
-                        RCLCPP_INFO(get_logger(), "line %zd roll: %f", line, std::acos((y_max - y_min)/(x_max - x_min)));
                 }
+                RCLCPP_INFO(get_logger(), "y_max: %f, y_min: %f, x_max: %f, x_min: %f", y_max, y_min, x_max, x_min);
+                RCLCPP_INFO(get_logger(), "line %zd roll: %f", line, std::acos((y_max - y_min)/(x_max - x_min)));
+
                 if (line == this->points_all_lines.size() - 1)
                 {
                         RCLCPP_INFO(get_logger(), "y_mean_max: %f, y_mean_min: %f, z_mean_max: %f, z_min_min: %f",
                                  y_mean_max, y_mean_min, z_mean_max, z_mean_min);
                         RCLCPP_INFO(get_logger(), "pitch: %f", std::acos( (y_mean_max - y_mean_min) / (z_mean_max - z_mean_min) ));
                 }
+                
         }
 }
 
