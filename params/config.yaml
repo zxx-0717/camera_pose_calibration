@@ -2,5 +2,6 @@ camera_pose_calibration:
   ros__parameters:
     z_max: 0.5
     topic_name: "/camera2/depth/points"
+    ratio_invalid_data: 0.2
 
 

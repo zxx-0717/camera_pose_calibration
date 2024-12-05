@@ -34,13 +34,23 @@ public:
 
         void init_params();
 
+        float radian_to_degree(float x)
+        {
+                return x / M_PI * 180.0;
+        }
+
         // parameters
         std::string topic_name;
         float z_max;
+        float ratio_invalid_data;
 
         std::vector<Point3D> points_one_line;
         std::vector<std::vector<Point3D>> points_all_lines;
         int width, height;
+
+        float frame_roll = 0.0, frame_pitch = 0.0;
+        float frames_roll =0.0, frames_pitch = 0.0;
+        int frame_num = 0;
 };
 
 #endif
