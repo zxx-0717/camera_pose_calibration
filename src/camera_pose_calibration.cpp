@@ -12,8 +12,12 @@ CameraPoseCalibration::CameraPoseCalibration(const rclcpp::NodeOptions & options
         RCLCPP_INFO(get_logger(), "get parameters");
         init_params();
         RCLCPP_INFO(get_logger(), "topic_name: %s", this->topic_name.c_str());
-        RCLCPP_INFO(get_logger(), "z_max: %f", this->z_max);
+        RCLCPP_INFO(get_logger(), "distance_max: %f", this->distance_max);
         RCLCPP_INFO(get_logger(), "ration_invalid_data: %f", this->ratio_invalid_data);
+        RCLCPP_INFO(get_logger(), "target_frame: %s", this->target_frame.c_str());
+
+        tf2_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+        tf2_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf2_);
 
 
         camera2_points_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -29,19 +33,34 @@ CameraPoseCalibration::~CameraPoseCalibration()
 
 void CameraPoseCalibration::init_params()
 {
-        this->declare_parameter<float>("z_max", 0.5);
+        this->declare_parameter<float>("distance_max", 0.5);
         this->declare_parameter<std::string>("topic_name", "/camera3/depth/points");
         this->declare_parameter<float>("ratio_invalid_data", 0.4);
+        this->declare_parameter<std::string>("target_frame", "base_link");
 
-	this->z_max = this->get_parameter_or<float>("z_max", 0.5);
+	this->distance_max = this->get_parameter_or<float>("distance_max", 0.5);
 	this->topic_name = this->get_parameter_or<std::string>("topic_name", "/camera3/depth/points");
 	this->ratio_invalid_data = this->get_parameter_or<float>("ratio_invalid_data", 0.4);
+        this->target_frame = this->get_parameter_or<std::string>("target_frame", "base_link");
 
 }
 
 void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointCloud2::SharedPtr msg)
 {
+        float sin_theta = 0.08583788;
+        float cos_theta = 0.99630912;
         RCLCPP_INFO(get_logger(), "--------------------------- frame %d ---------------------------", frame_num++);
+
+        // try 
+        // {
+        //         auto cloud = std::make_shared<sensor_msgs::msg::PointCloud2>();
+        //         tf2_->transform(*msg, *cloud, target_frame, tf2::durationFromSec(0.01));
+        //         msg = cloud;
+        //         } catch (tf2::TransformException & ex) {
+        //         RCLCPP_ERROR_STREAM(this->get_logger(), "Transform failure: " << ex.what());
+        //         return;
+        // }
+
         this->width = msg->width;
         this->height = msg->height;
 
@@ -57,7 +76,7 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
         {
                 std::vector<Point3D>().swap(this->points_one_line);
                 int count_invlid = 0;
-                for (int col = 0; col < width; col++)
+                for (int col = 85; col < width - 90; col++)
                 {
                         index = (row * width + col) * msg->point_step;
                         
@@ -79,13 +98,14 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
                         uc_z[3] = msg->data[index + 11];
                         memcpy(&z, uc_z, 4);
 
-                        if (!std::isnan(x) && !std::isnan(y) && !std::isnan(z) && (z < this->z_max))
+                        if (!std::isnan(x) && !std::isnan(y) && !std::isnan(z) && (z < this->distance_max))
                         {
                                 point.x = x;
                                 point.y = y;
                                 point.z = z;
+                                point.row = row;
+                                point.col = col;
                                 this->points_one_line.push_back(point);
-                                RCLCPP_DEBUG(get_logger(), "row: %d, col: %d => x: %f, y: %f, z: %f",row, col, x, y, z);
                                 if (z_min > z)
                                 {
                                         z_min = z;
@@ -95,7 +115,7 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
                         else
                         {
                                 count_invlid++;
-                                if (count_invlid >= (int)(msg->width * this->ratio_invalid_data))
+                                if (count_invlid >= (int)((msg->width - 85 - 90)  * this->ratio_invalid_data))
                                 {
                                         break;
                                 }
@@ -142,6 +162,10 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
                 for (size_t point_index = 0; point_index < points_line.size(); point_index++)
                 {
                         auto point = points_line[point_index];
+                        float y_, z_;
+                        y_ = point.y * cos_theta - z_ * sin_theta;
+                        z_ = point.y * sin_theta + z * cos_theta;
+                        RCLCPP_DEBUG(get_logger(), "row: %d, col: %d => x: %f, y: %f, z: %f",point.row, point.col, point.x, y_, z_);
 
                         z_sum += point.z;
                         y_sum += point.y;
@@ -214,7 +238,7 @@ void CameraPoseCalibration::camera2_points_sub_callback(sensor_msgs::msg::PointC
         
 
         frames_pitch = frames_pitch * (frame_num - 1) + frame_pitch;
-        frames_roll  = frame_roll *(frame_num - 1) + frame_roll;
+        frames_roll  = frames_roll *(frame_num - 1) + frame_roll;
 
         frames_pitch /= frame_num;
         frames_roll  /= frame_num;
